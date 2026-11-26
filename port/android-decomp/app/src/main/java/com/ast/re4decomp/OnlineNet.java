@@ -42,11 +42,15 @@ final class OnlineNet {
     void message(String line);
     /** The lobby ended (the server closed it, the connection broke, or it was full). */
     void closed(String why);
+    /** The host started the game: everybody opens it now. */
+    void started();
   }
 
   /** What both sides offer to the screen. */
   interface Session {
     void say(String text);
+    /** The host starts the game for everybody (does nothing for a guest). */
+    void start();
     void close();
   }
 
@@ -278,6 +282,13 @@ final class OnlineNet {
       if (open && !t.isEmpty()) announce(hostPlayer + ": " + t);
     }
 
+    /** The host starts the game: START to every guest, and the host's own screen is told too. */
+    @Override public void start() {
+      if (!open) return;
+      for (Peer p : peers) if (p.name != null) p.send("START");
+      listener.started();
+    }
+
     @Override public void close() {
       if (!open) return;
       open = false;
@@ -344,6 +355,8 @@ final class OnlineNet {
             listener.players(n);
           } else if (line.startsWith("MSG\t")) {
             listener.message(line.substring(4));
+          } else if (line.equals("START")) {
+            listener.started();
           }
         }
       } catch (IOException e) {
@@ -365,6 +378,10 @@ final class OnlineNet {
       } catch (RuntimeException ignored) {
         // closed meanwhile
       }
+    }
+
+    @Override public void start() {
+      // only the host starts the game
     }
 
     @Override public void close() {

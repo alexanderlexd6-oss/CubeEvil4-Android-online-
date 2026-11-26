@@ -1198,18 +1198,23 @@ public final class CoreActivity extends Activity implements InputManager.InputDe
       return;
     }
     releaseAll();
-    boolean paused = CoreBridge.pause(true, 800);
-    keepGameAimInvert();
-    keepGameVibration();
-    audio.stop();
-    stopVibrator();
-    Log.i(TAG, "menu open" + (paused ? ", the game stands" : ", the game did not stop yet (loading?)")
+    // in an online room (OnlineMenu, 25.11.2026) the menu does not stop the game: the others keep playing
+    final boolean online = OnlineMenu.inRoom();
+    boolean paused = false;
+    if (!online) {
+      paused = CoreBridge.pause(true, 800);
+      keepGameAimInvert();
+      keepGameVibration();
+      audio.stop();
+      stopVibrator();
+    }
+    Log.i(TAG, "menu open" + (online ? ", online: the game keeps running" : paused ? ", the game stands" : ", the game did not stop yet (loading?)")
         + " (" + language() + ")");
     menu = new CoreMenu(this, menuHost, tools, surface.getWidth(), surface.getHeight());
     menu.setOnDismissListener(d -> {
       menu = null;
       releaseAll();
-      if (resumed && !touchEditing) {
+      if (resumed && !touchEditing && !online) {
         CoreBridge.pause(false, 0);
         audio.start();
         main.removeCallbacks(rumbleTick);
