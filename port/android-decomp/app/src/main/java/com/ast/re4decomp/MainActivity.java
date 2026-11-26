@@ -35,8 +35,11 @@ public final class MainActivity extends Activity implements ImportManager.Listen
   private boolean core;
   private ImportManager imports;
   private TextView status, discs, roomNote, disc1State, disc2State;
-  private Button disc1, disc2, cancel, open, start;
+  private Button disc1, disc2, cancel, open, start, importToggle;
   private LinearLayout importPanel, roomBrowser;
+  /** The core launcher's import heading, and whether the player asked for the import with the discs ready. */
+  private View importHeading;
+  private boolean importShown;
   private Spinner category, rooms, mode;
   private RoomCatalog catalog;
   private List<RoomCatalog.Entry> shown = Collections.emptyList();
@@ -64,9 +67,12 @@ public final class MainActivity extends Activity implements ImportManager.Listen
       line(body, dp(10));
       start = button(body, getString(R.string.core_start), this::startOriginalTitle);
       button(body, "Online", () -> OnlineMenu.show(this));
+      // with both discs ready the import stays out of the way (wish of the project owner, 25.11.2026): this button
+      // shows it again for other discs; without the discs the import shows by itself (changed())
+      importToggle = button(body, getString(R.string.core_import_show), () -> { importShown = !importShown; changed(); });
       // the flavour sideload (1.0, DataFolder): where the data go, before the discs are imported
       if (DataFolder.enabled) dataFolderSection(body);
-      heading(body, getString(R.string.core_import_heading));
+      importHeading = heading(body, getString(R.string.core_import_heading));
     } else {
       // the variant "classic" (own game modules): its name and real version, so it is not taken for
       // CubeEvil4 (the title said 0.37.0 for every version until 19.10.2026)
@@ -146,7 +152,7 @@ public final class MainActivity extends Activity implements ImportManager.Listen
     lp.topMargin = margin; lp.bottomMargin = margin; body.addView(rule(new TextView(this).getCurrentTextColor()), lp);
   }
   /** A centred heading with a line on its left and right. */
-  private void heading(LinearLayout body, String text) {
+  private View heading(LinearLayout body, String text) {
     LinearLayout row = new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL); row.setGravity(Gravity.CENTER_VERTICAL);
     TextView t = new TextView(this); t.setText(text); t.setTextSize(16); t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
     t.setGravity(Gravity.CENTER); t.setPadding(dp(12), 0, dp(12), 0);
@@ -155,6 +161,7 @@ public final class MainActivity extends Activity implements ImportManager.Listen
     row.addView(rule(t.getCurrentTextColor()), side); row.addView(t, mid); row.addView(rule(t.getCurrentTextColor()), new LinearLayout.LayoutParams(side));
     LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
     lp.topMargin = dp(14); lp.bottomMargin = dp(2); body.addView(row, lp);
+    return row;
   }
   /** A button over the left half of a row, `beside` (or nothing) in the right half. */
   private Button halfButton(LinearLayout body, String label, Runnable action, TextView beside) {
@@ -465,7 +472,13 @@ public final class MainActivity extends Activity implements ImportManager.Listen
       // no empty line between the import heading and its buttons
       status.setVisibility(status.getText().length() == 0 ? View.GONE : View.VISIBLE);
     }
-    if (!gameReady() || imports.busy) importPanel.setVisibility(View.VISIBLE);
+    boolean needImport = !gameReady() || imports.busy;
+    if (core) {
+      boolean showImport = needImport || importShown;
+      importPanel.setVisibility(showImport ? View.VISIBLE : View.GONE);
+      if (importHeading != null) importHeading.setVisibility(showImport ? View.VISIBLE : View.GONE);
+      if (importToggle != null) importToggle.setVisibility(needImport ? View.GONE : View.VISIBLE);
+    } else if (needImport) importPanel.setVisibility(View.VISIBLE);
     if (start != null) start.setEnabled(gameReady() && !imports.busy && !loading && !folderBusy);
     showFolder();
     if (imports.busy || loading) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

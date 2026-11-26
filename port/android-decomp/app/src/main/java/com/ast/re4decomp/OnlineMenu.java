@@ -7,31 +7,35 @@ import android.content.SharedPreferences;
 import android.text.InputFilter;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import java.io.IOException;
+import java.net.BindException;
 import java.util.ArrayList;
 import java.util.List;
 
-/** The "Online" menu of the start screen: player name, list of servers, create a server, join one directly.
- *  First version: only the interface and the saved settings. The network comes in the next step. */
+/** The "Online" menu of the start screen: player name, list of servers on the same Wi-Fi, create a server, join one
+ *  directly. Since 25.11.2026 the network works (OnlineNet): a lobby with the player list and a chat. The game's own
+ *  state is not sent yet. */
 final class OnlineMenu {
   private static final String PREFS = "online";
   private static final String KEY_NAME = "name", KEY_SERVER = "serverName", KEY_PORT = "port", KEY_LAST = "lastAddress";
   static final int DEFAULT_PORT = 7777;
 
-  /** One server of the list (filled by the network part later). */
-  static final class Server {
-    final String name, host;
-    final int port;
-    Server(String name, String host, int port) { this.name = name; this.host = host; this.port = port; }
-  }
+  /** The servers found so far (the search runs on "Actualizar lista"). */
+  private static final List<OnlineNet.Found> found = new ArrayList<>();
 
-  /** The servers found so far. Empty until the search is built. */
-  private static final List<Server> found = new ArrayList<>();
+  /** Makes the host's or the guest's side of a lobby; runs off the main thread. */
+  private interface Maker {
+    OnlineNet.Session make(OnlineNet.Listener listener) throws IOException;
+  }
 
   private OnlineMenu() {}
 
@@ -106,7 +110,7 @@ final class OnlineMenu {
     box.addView(list);
     renderList(a, list, name);
 
-    button(a, box, "Actualizar lista", () -> renderList(a, list, name));
+    button(a, box, "Actualizar lista", () -> refresh(a, list, name));
     button(a, box, "Crear servidor", () -> {
       String n = readName(a, name);
       if (n != null) createServer(a, n);
@@ -130,11 +134,11 @@ final class OnlineMenu {
       list.addView(none);
       return;
     }
-    for (Server s : found) {
+    for (OnlineNet.Found s : found) {
       Button row = new Button(a);
       row.setAllCaps(false);
       row.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-      row.setText(s.name + "  \u00b7  " + s.host + ":" + s.port);
+      row.setText(s.name + "  \u00b7  " + s.host + ":" + s.port + "  \u00b7  " + s.players + "/" + OnlineNet.MAX_PLAYERS);
       row.setOnClickListener(v -> {
         if (readName(a, name) != null) connect(a, s.host, s.port);
       });
@@ -142,7 +146,108 @@ final class OnlineMenu {
     }
   }
 
-  /** Create a server: its name and port, saved. The hosting itself comes in the next step. */
+  /** Looks for servers on the same network (the default port and the saved one), then draws the list again. */
+  private static void refresh(Activity a, LinearLayout list, EditText name) {
+    Toast.makeText(a, "Buscando servidores…", Toast.LENGTH_SHORT).show();
+    final int saved = prefs(a).getInt(KEY_PORT, DEFAULT_PORT);
+    Thread t = new Thread(() -> {
+      List<OnlineNet.Found> all = new ArrayList<>(OnlineNet.search(DEFAULT_PORT, 1200));
+      if (saved != DEFAULT_PORT) {
+        for (OnlineNet.Found f : OnlineNet.search(saved, 1200)) {
+          boolean dup = false;
+          for (OnlineNet.Found o : all) if (o.host.equals(f.host) && o.port == f.port) dup = true;
+          if (!dup) all.add(f);
+        }
+      }
+      a.runOnUiThread(() -> {
+        found.clear();
+        found.addAll(all);
+        renderList(a, list, name);
+      });
+    }, "online-search");
+    t.setDaemon(true);
+    t.start();
+  }
+
+  /** The lobby window: players, chat, "Enviar" and "Salir". `maker` opens the connection off the main thread; the
+   *  window appears once it worked, a message tells why when not. Closing the window leaves the lobby. */
+  private static void openLobby(Activity a, String title, Maker maker) {
+    LinearLayout box = form(a);
+    label(a, box, "Jugadores");
+    TextView players = new TextView(a);
+    players.setTextSize(15);
+    box.addView(players);
+    label(a, box, "Chat");
+    TextView chat = new TextView(a);
+    chat.setTextSize(14);
+    ScrollView chatScroll = new ScrollView(a);
+    chatScroll.addView(chat);
+    box.addView(chatScroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(a, 160)));
+    EditText input = new EditText(a);
+    input.setSingleLine(true);
+    input.setHint("Escribe un mensaje");
+    input.setImeOptions(EditorInfo.IME_ACTION_SEND);
+    box.addView(input);
+
+    final OnlineNet.Session[] session = new OnlineNet.Session[1];
+    final AlertDialog[] dialog = new AlertDialog[1];
+    final boolean[] ended = new boolean[1];
+    Runnable send = () -> {
+      String text = input.getText().toString().trim();
+      if (session[0] != null && !text.isEmpty()) {
+        session[0].say(text);
+        input.setText("");
+      }
+    };
+    input.setOnEditorActionListener((v, id, ev) -> { send.run(); return true; });
+    button(a, box, "Enviar", send);
+
+    OnlineNet.Listener listener = new OnlineNet.Listener() {
+      @Override public void players(List<String> names) {
+        StringBuilder sb = new StringBuilder();
+        for (String n : names) sb.append("• ").append(n).append('\n');
+        a.runOnUiThread(() -> players.setText(sb.toString().trim()));
+      }
+
+      @Override public void message(String line) {
+        a.runOnUiThread(() -> {
+          chat.append(line + "\n");
+          chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
+        });
+      }
+
+      @Override public void closed(String why) {
+        a.runOnUiThread(() -> {
+          ended[0] = true;
+          Toast.makeText(a, why, Toast.LENGTH_LONG).show();
+          if (dialog[0] != null && dialog[0].isShowing()) dialog[0].dismiss();
+        });
+      }
+    };
+
+    Toast.makeText(a, "Conectando…", Toast.LENGTH_SHORT).show();
+    Thread t = new Thread(() -> {
+      try {
+        OnlineNet.Session s = maker.make(listener);
+        a.runOnUiThread(() -> {
+          if (ended[0] || a.isFinishing() || a.isDestroyed()) { s.close(); return; }
+          session[0] = s;
+          AlertDialog d = new AlertDialog.Builder(a).setTitle(title).setView(box).setNegativeButton("Salir", null).create();
+          d.setOnDismissListener(x -> s.close());
+          dialog[0] = d;
+          d.show();
+        });
+      } catch (IOException e) {
+        String why = e instanceof BindException ? "Ese puerto ya está en uso. Prueba con otro."
+            : e.getMessage() == null ? "No se pudo conectar" : e.getMessage();
+        a.runOnUiThread(() -> Toast.makeText(a, why, Toast.LENGTH_LONG).show());
+      }
+    }, "online-open");
+    t.setDaemon(true);
+    t.start();
+  }
+
+  /** Create a server: its name and port, saved; then the lobby opens with this player as the host. */
   private static void createServer(Activity a, String player) {
     SharedPreferences pr = prefs(a);
     LinearLayout box = form(a);
@@ -171,7 +276,10 @@ final class OnlineMenu {
             return;
           }
           pr.edit().putString(KEY_SERVER, sn).putInt(KEY_PORT, pn).apply();
-          Toast.makeText(a, "Servidor \"" + sn + "\" listo en el puerto " + pn + " (todav\u00eda sin red)", Toast.LENGTH_LONG).show();
+          final String serverTitle = sn;
+          final int serverPort = pn;
+          openLobby(a, serverTitle + "  \u00b7  puerto " + serverPort,
+              l -> new OnlineNet.Server(serverTitle, player, serverPort, l));
         })
         .setNegativeButton(android.R.string.cancel, null).show();
   }
@@ -208,8 +316,9 @@ final class OnlineMenu {
         .setNegativeButton(android.R.string.cancel, null).show();
   }
 
-  /** Placeholder: the real connection is built in the next step. */
+  /** Joins the lobby at host:port with the saved player name. */
   private static void connect(Activity a, String host, int port) {
-    Toast.makeText(a, "Conectar a " + host + ":" + port + " (todav\u00eda sin red)", Toast.LENGTH_LONG).show();
+    final String player = playerName(a);
+    openLobby(a, host + ":" + port, l -> OnlineNet.Client.join(host, port, player, l));
   }
 }

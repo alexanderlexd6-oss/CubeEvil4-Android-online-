@@ -13,6 +13,7 @@
          screen and as one line in the error log -->
     <string name="core_unofficial">Unofficial build – the official CubeEvil4 is only available at github.com/Andiweli/CubeEvil4-Android</string>
     <string name="core_start">Start game</string>
+    <string name="core_import_show">Import discs</string>
     <!-- the flavour "sideload" (1.0, DataFolder): a data folder of the player's choice on the start screen -->
     <string name="data_folder_heading">Data folder</string>
     <string name="data_folder_own">%1$s (the app\'s own folder)</string>
