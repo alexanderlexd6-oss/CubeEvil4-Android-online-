@@ -29,6 +29,12 @@ public final class CoreBridge {
   public static native void pad(int buttons, int stickX, int stickY, int substickX,
                                 int substickY, int triggerL, int triggerR);
   /**
+   * Player 2's controller on the core's channel 1 (split screen test, 26.11.2026): the same values as pad();
+   * connected=false takes the controller away again. Cores without channel 1 ignore it.
+   */
+  public static native void pad2(boolean connected, int buttons, int stickX, int stickY, int substickX,
+                                 int substickY, int triggerL, int triggerR);
+  /**
    * The game's rumble motor: bits 0-3 = on in the last four game frames
    * (bit 0 the newest), bits 8-31 = game frames so far; 0 without the core.
    */

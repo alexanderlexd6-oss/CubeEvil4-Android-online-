@@ -67,6 +67,7 @@ public final class MainActivity extends Activity implements ImportManager.Listen
       line(body, dp(10));
       start = button(body, getString(R.string.core_start), this::startOriginalTitle);
       button(body, "Online", () -> OnlineMenu.show(this, this::startOriginalTitle));
+      button(body, "Split screen", () -> SplitScreenMenu.show(this));
       // with both discs ready the import stays out of the way (wish of the project owner, 25.11.2026): this button
       // shows it again for other discs; without the discs the import shows by itself (changed())
       importToggle = button(body, getString(R.string.core_import_show), () -> { importShown = !importShown; changed(); });

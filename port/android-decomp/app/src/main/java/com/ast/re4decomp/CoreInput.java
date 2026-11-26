@@ -100,6 +100,9 @@ public final class CoreInput {
   }
 
   private final Map<Integer, Device> devices = new HashMap<>();
+  /** Player 2's controller (a device id, PlayerSlots.NONE: no second player): it is left out of pad() and goes to pad2(). */
+  private int player2 = PlayerSlots.NONE;
+  private boolean click2L, click2R;              // player 2's triggers' digital L/R at the last pad2()
   private boolean swapFace, alternate;
   private boolean latchLR, latchB;               // the menu's switches
   private boolean latchedL, latchedR, latchedB;  // held by the controller's latching
@@ -119,6 +122,14 @@ public final class CoreInput {
   private static final int HELD_ACTIONS = GC_A | GC_B | GC_R | GC_L;
   private boolean menuChanged;
   private int lastButtons, carried;
+
+  /** Player 2's controller (a device id; PlayerSlots.NONE: none). Its keys and sticks no longer reach player 1's pad(). */
+  public void setPlayer2(int device) {
+    if (device != player2) click2L = click2R = false;
+    player2 = device;
+  }
+
+  public int player2() { return player2; }
 
   /** The controller's mapping; null or the default: the layout above. */
   public void setControllerMap(ActionMap map) {
@@ -633,7 +644,7 @@ public final class CoreInput {
     float padL = 0, padR = 0;
     boolean padB = false;
     for (Map.Entry<Integer, Device> e : devices.entrySet()) {
-      if (e.getKey() == TOUCH) continue;
+      if (e.getKey() == TOUCH || e.getKey() == player2) continue;
       Device d = e.getValue();
       ActionMap m = mapping(d.keyboard);
       d.mapped = -1;
@@ -669,7 +680,7 @@ public final class CoreInput {
     // B through its latching below
     for (Map.Entry<Integer, Device> e : devices.entrySet()) {
       Device d = e.getValue();
-      if (e.getKey() == TOUCH || d.mapped < 0) continue;
+      if (e.getKey() == TOUCH || e.getKey() == player2 || d.mapped < 0) continue;
       int bits = mapping(d.keyboard).buttons(mappedHeld(d), latchLR && latchedR, latchLR && latchedL);
       for (int code : d.held) bits |= d.keyboard ? ActionMap.fixedKeyboardButton(code) : dpad(code);
       if (!d.keyboard) bits |= d.hats;
@@ -699,6 +710,7 @@ public final class CoreInput {
     float lx = 0, ly = 0, rx = 0, ry = 0, lt = padL, rt = padR, fireR2 = 0;
     for (Map.Entry<Integer, Device> e : devices.entrySet()) {
       Device d = e.getValue();
+      if (e.getKey() == player2) continue;
       boolean touch = e.getKey() == TOUCH;
       if (!touch && d.mapped >= 0) {
         // the mapping: its buttons (L, R, B above), the keyboard's move keys or the controller's sticks
@@ -794,6 +806,24 @@ public final class CoreInput {
     lastButtons = buttons;
     return new int[] {buttons, raw(lx, MAIN_RAW), raw(-ly, MAIN_RAW), raw(rx, C_RAW),
         raw(-ry, C_RAW), Math.round(lt * 255f), Math.round(rt * 255f)};
+  }
+
+  /**
+   * Player 2's GameCube controller for the core's channel 1 (same values as pad()): the plain GameCube layout of its
+   * controller (no own mapping, no alternate controls, no latching). null: no second player (the channel stays empty).
+   */
+  public int[] pad2() {
+    if (player2 == PlayerSlots.NONE) return null;
+    Device d = devices.get(player2);
+    if (d == null) return new int[7];  // chosen, nothing pressed yet
+    float lt = d.l2Key ? 1f : d.lt, rt = d.r2Key ? 1f : d.rt;
+    click2L = lt >= (click2L ? TRIGGER_UNCLICK : TRIGGER_CLICK);
+    click2R = rt >= (click2R ? TRIGGER_UNCLICK : TRIGGER_CLICK);
+    int buttons = d.buttons | d.hats;
+    if (click2L) buttons |= GC_L;
+    if (click2R) buttons |= GC_R;
+    return new int[] {buttons, raw(d.lx, MAIN_RAW), raw(-d.ly, MAIN_RAW), raw(d.rx, C_RAW), raw(-d.ry, C_RAW),
+        Math.round(lt * 255f), Math.round(rt * 255f)};
   }
 
   /** The keys a mapped device holds: its keys, the triggers past half way as L2 and R2. */

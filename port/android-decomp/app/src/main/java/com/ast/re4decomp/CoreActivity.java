@@ -309,6 +309,8 @@ public final class CoreActivity extends Activity implements InputManager.InputDe
   // (the menu's "Vibration", RumbleTarget; chooseRumble)
   private Vibrator vibrator;
   private int rumbleMode, rumbleTarget, lastPad = -1;
+  /** Whether player 2's controller is on the core's channel 1 now (send() takes it away again when it goes). */
+  private boolean pad2On;
   private VibratorManager padMotors;  // the controller's motors while they are the target (Android 12 and later)
   private boolean padAmplitude;
   private String rumbleLine = "";
@@ -431,6 +433,7 @@ public final class CoreActivity extends Activity implements InputManager.InputDe
         : CoreBridge.start(imports.root.getAbsolutePath(), coreSettings);
     menuSupported = startProblem.isEmpty() && CoreBridge.hasMenu();
     SharedPreferences inputPrefs = getSharedPreferences(INPUT_PREFS, MODE_PRIVATE);
+    input.setPlayer2(SplitScreenMenu.player2Device(this));  // the Split screen menu's choice
     input.setSwapFace(inputPrefs.getBoolean(SWAP_FACE, false));
     input.setAlternate(inputPrefs.getBoolean(ALT_CONTROLS, false));
     if (inputPrefs.contains(OLD_KEY_MAP)) {
@@ -2416,6 +2419,15 @@ public final class CoreActivity extends Activity implements InputManager.InputDe
     if (photo != null && photo.active()) return;
     int[] p = input.pad();
     CoreBridge.pad(p[0], p[1], p[2], p[3], p[4], p[5], p[6]);
+    // player 2's controller on the core's channel 1 (only with the Split screen menu's choice)
+    final int[] q = input.pad2();
+    if (q != null) {
+      CoreBridge.pad2(true, q[0], q[1], q[2], q[3], q[4], q[5], q[6]);
+      pad2On = true;
+    } else if (pad2On) {
+      CoreBridge.pad2(false, 0, 0, 0, 0, 0, 0, 0);
+      pad2On = false;
+    }
     String stick = stickWatch.sample(SystemClock.uptimeMillis(), p[1], p[2]);
     if (stick != null) Log.i(TAG, stick);
     // swipe aiming (Touch Aiming: Touch Area): the finger's way since the last event as angles, with the
@@ -2930,7 +2942,12 @@ public final class CoreActivity extends Activity implements InputManager.InputDe
     }
   }
 
-  @Override public void onInputDeviceAdded(int id) { noteConnected(id); touchControls.update(); updateMouseCapture(); }
+  @Override public void onInputDeviceAdded(int id) {
+    noteConnected(id);
+    input.setPlayer2(SplitScreenMenu.player2Device(this));
+    touchControls.update();
+    updateMouseCapture();
+  }
   @Override public void onInputDeviceChanged(int id) {
     if (id == lastPad) chooseRumble("controller changed");
     input.remove(id);
@@ -2950,6 +2967,7 @@ public final class CoreActivity extends Activity implements InputManager.InputDe
     padLayouts.remove(id);
     controllerLog.forget(id);
     input.remove(id);
+    if (id == input.player2()) input.setPlayer2(PlayerSlots.NONE);
     send();
     touchControls.update();
   }

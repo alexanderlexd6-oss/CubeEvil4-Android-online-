@@ -366,6 +366,27 @@ static long long padNowNs()
                std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
+// Player 2's controller on channel 1 (split screen test, 26.11.2026): the same Re4CorePad, written by the app's input
+// thread, read by PADRead. A press shorter than a frame is kept for one read (g_down2), like channel 0's presses.
+static std::mutex g_live2Lock;
+static Re4CorePad g_live2;
+static bool g_hasLive2;
+static u16 g_down2;
+
+void re4_pad_live2(const Re4CorePad* pad)
+{
+    std::lock_guard<std::mutex> lock(g_live2Lock);
+    if (pad) {
+        g_down2 |= pad->buttons & ~g_live2.buttons;
+        g_live2 = *pad;
+        g_hasLive2 = true;
+    } else {
+        g_hasLive2 = false;
+        g_down2 = 0;
+        g_live2 = Re4CorePad{};
+    }
+}
+
 void re4_pad_live(const Re4CorePad* pad)
 {
     std::lock_guard<std::mutex> lock(g_liveLock);
@@ -504,7 +525,27 @@ u32 PADRead(PADStatus* status)
         re4_log("pad: frame %u buttons 0x%04x", gFrame, status[0].button);
     }
     lastButtons = status[0].button;
-    for (int i = 1; i < 4; i++) {
+    {
+        // channel 1: player 2's controller when the app sends one, else no controller (as a real console without it)
+        std::lock_guard<std::mutex> lock(g_live2Lock);
+        if (g_hasLive2) {
+            const u16 buttons = g_live2.buttons | g_down2;
+            g_down2 = 0;
+            status[1].err = 0;
+            status[1].button = buttons;
+            status[1].stickX = g_live2.stickX;
+            status[1].stickY = g_live2.stickY;
+            status[1].substickX = g_live2.substickX;
+            status[1].substickY = g_live2.substickY;
+            status[1].triggerLeft = g_live2.triggerL;
+            status[1].triggerRight = g_live2.triggerR;
+            status[1].analogA = (buttons & 0x0100) ? 0xFF : 0;
+            status[1].analogB = (buttons & 0x0200) ? 0xFF : 0;
+        } else {
+            status[1].err = kNoController;
+        }
+    }
+    for (int i = 2; i < 4; i++) {
         status[i].err = kNoController;
     }
     gFrame++;

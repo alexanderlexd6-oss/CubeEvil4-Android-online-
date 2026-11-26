@@ -201,6 +201,8 @@ int re4_core_state(void);
 const char* re4_core_message(void);
 /* Controller channel 0 from now on (replaces the test script). */
 void re4_core_pad(const Re4CorePad* pad);
+/* Controller channel 1 (player 2, split screen test, 26.11.2026); NULL: no controller on channel 1. */
+void re4_core_pad2(const Re4CorePad* pad);
 /* The rumble motor of channel 0 as the game drives it: bits 0-3 = motor on in
  * the last four frames (bit 0 the newest), bits 8-31 = frames so far (the app
  * stops vibrating when they stand still). Bit 4: the game shows a menu in the

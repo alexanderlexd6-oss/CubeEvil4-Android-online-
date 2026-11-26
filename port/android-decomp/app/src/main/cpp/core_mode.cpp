@@ -80,6 +80,7 @@ struct CoreApi {
   int (*state)(void){};
   const char *(*message)(void){};
   void (*pad)(const Re4CorePad *){};
+  void (*pad2)(const Re4CorePad *){};  // optional (cores since 26.11.2026): player 2's controller on channel 1, null: none
   unsigned (*rumble)(void){};
   int (*audio)(int16_t *, int){};
   void (*audioStats)(unsigned *){};
@@ -460,6 +461,7 @@ void loadCore(JNIEnv *env) {
   api.pause =reinterpret_cast<int (*)(int, int)>(dlsym(api.main, "re4_core_pause"));
   api.debugMenu = reinterpret_cast<void (*)(void)>(dlsym(api.main, "re4_core_debug_menu"));
   api.setDof = reinterpret_cast<void (*)(int)>(dlsym(api.main, "re4_core_set_dof"));
+  api.pad2 = reinterpret_cast<void (*)(const Re4CorePad *)>(dlsym(api.main, "re4_core_pad2"));
   api.gyro = reinterpret_cast<void (*)(float, float)>(dlsym(api.main, "re4_core_gyro"));
   api.depth = reinterpret_cast<void (*)(const unsigned *, unsigned)>(dlsym(api.main, "re4_core_gx_depth"));
   api.setLetterbox = reinterpret_cast<void (*)(int)>(dlsym(api.main, "re4_core_set_letterbox"));
@@ -3569,6 +3571,23 @@ extern "C" JNIEXPORT void JNICALL Java_com_ast_re4decomp_CoreBridge_pad(
                  clampS(substickX), clampS(substickY), clampU(triggerL), clampU(triggerR)};
   if (levelBench.active) pad = Re4CorePad{};  // the benchmark: no player's input (Leon just stands)
   api.pad(&pad);
+}
+
+// Player 2's controller on the core's channel 1 (SplitScreenMenu, CoreActivity.send). Cores without channel 1, and the
+// core in a process of its own (no way for it through the shared memory yet), ignore it.
+extern "C" JNIEXPORT void JNICALL Java_com_ast_re4decomp_CoreBridge_pad2(
+    JNIEnv *, jclass, jboolean connected, jint buttons, jint stickX, jint stickY, jint substickX, jint substickY,
+    jint triggerL, jint triggerR) {
+  if (!api.pad2) return;
+  if (!connected) {
+    api.pad2(nullptr);
+    return;
+  }
+  auto clampS = [](jint v) { return static_cast<std::int8_t>(v < -127 ? -127 : v > 127 ? 127 : v); };
+  auto clampU = [](jint v) { return static_cast<std::uint8_t>(v < 0 ? 0 : v > 255 ? 255 : v); };
+  Re4CorePad pad{static_cast<std::uint16_t>(buttons), clampS(stickX), clampS(stickY),
+                 clampS(substickX), clampS(substickY), clampU(triggerL), clampU(triggerR)};
+  api.pad2(&pad);
 }
 
 // A tap at (x, y) pixels of the surface (CoreActivity.watchTap): as a place in the game's picture
