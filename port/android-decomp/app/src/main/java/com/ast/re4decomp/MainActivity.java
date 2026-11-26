@@ -470,7 +470,8 @@ public final class MainActivity extends Activity implements ImportManager.Listen
     showFolder();
     if (imports.busy || loading) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     updateOpenState();
-    if(!startupShown&&gameReady()&&!imports.busy&&!loading)startOriginalTitle();
+    // no automatic start (wish of the project owner, 25.11.2026): with both discs ready the launcher stays and the
+    // game only starts with "Start game" (the Online menu lives on this screen too, so the player needs it open)
   }
   @Override public boolean dispatchKeyEvent(KeyEvent e) {
     if ((e.getSource() & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD &&
