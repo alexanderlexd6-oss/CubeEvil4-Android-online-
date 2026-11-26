@@ -13,16 +13,17 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: ''
-
       - name: Instalar NDK r28c y herramientas
         run: |
-          sdkmanager "ndk;28.2.13676358"
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKM=$(ls -d "$SDK"/cmdline-tools/*/bin/sdkmanager | head -1)
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "ndk;28.2.13676358"
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake python3
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/28.2.13676358" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$SDK" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$SDK" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$SDK/ndk/28.2.13676358" >> $GITHUB_ENV
 
       - name: Compilar el nucleo del juego
         run: bash port/tools/whole_build_android.sh
