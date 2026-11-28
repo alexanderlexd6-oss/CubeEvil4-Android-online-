@@ -43,7 +43,7 @@ index 60f8bae..61401ae 100644
          return;
      }
      if (pEm == pSUB && (SpfFlagChk(pG, SPF_SUBCHAR))) {
-@@ -458,3 +461,52 @@ void cDmgInfo::move()
+@@ -458,3 +461,70 @@ void cDmgInfo::move()
  }
  
  cEmMgr EmMgr;
@@ -67,22 +67,40 @@ index 60f8bae..61401ae 100644
 +        return;
 +    }
 +    if (!pPL2) {
++        static int tries = 0;
 +        if (pPL && pPL->isAlive() && !StaFlagChk(pG, STA_SUSPEND)) {
 +            cPlayer* first = pPL;
 +            cEm* e = EmMgr.create(0);
 +            pPL = first;
++            if (tries++ < 5) {
++                pLog->err(0, 0, "PL2: spawn try %d: create(0) = %08X, pl_type %d", tries, (u32) (size_t) e, (int) pG->pl_type);
++            }
 +            if (e) {
 +                pPL2 = (cPlayer*) e;
 +                e->pos = first->pos;
 +                e->pos.x += 200.0f;
 +                e->ang = first->ang;
++                pLog->err(0, 0, "PL2: spawned, be_flag %08X, pos %f %f %f", (u32) e->be_flag, e->pos.x, e->pos.y, e->pos.z);
++            }
++        } else {
++            static int waits = 0;
++            if ((waits++ % 300) == 0) {
++                pLog->err(0, 0, "PL2: waiting to spawn: pPL %08X alive %d suspend %d", (u32) (size_t) pPL, pPL ? (int) pPL->isAlive() : -1,
++                          (int) StaFlagChk(pG, STA_SUSPEND));
 +            }
 +        }
 +        return;
 +    }
 +    if (!pPL2->isAlive()) {
++        pLog->err(0, 0, "PL2: second player is not alive any more, forgotten");
 +        pPL2 = 0;
 +        return;
++    }
++    {
++        static int beat = 0;
++        if ((beat++ % 600) == 0) {
++            pLog->err(0, 0, "PL2: running, be_flag %08X, pos %f %f %f", (u32) pPL2->be_flag, pPL2->pos.x, pPL2->pos.y, pPL2->pos.z);
++        }
 +    }
 +    if (!SpfFlagChk(pG, SPF_PL) && (pPL2->be_flag & 0x20) &&
 +        (!StaFlagChk(pG, STA_SUSPEND) || (pPL2->be_flag & 0x800))) {
@@ -122,7 +140,7 @@ index cc978df..9306965 100644
      Pad_test();
      if (SpfFlagChk(pG, SPF_PL)) {
          KeyStopFlagClear();
-@@ -467,3 +467,57 @@ void Pad_test()
+@@ -467,3 +467,66 @@ void Pad_test()
  
  // The split object's .rodata is 8-aligned and 4 bytes longer (padding after the last string).
  asm(".section .rodata; .balign 8");
@@ -137,7 +155,16 @@ index cc978df..9306965 100644
 +    u64 on = 0;
 +    u64 bit;
 +    int i;
++    JOY j2;
 +
++    j2 = Joy[1];
++    {
++        /* The game's own code reads Joy[1] for debug tools (the debug camera in CameraMove, STOP MODE, ...): the second
++           player's controller must only feed Key2, so Joy[1] is emptied after the copy (only err stays). */
++        u32 err = Joy[1].err;
++        memclr_asm(&Joy[1], sizeof(JOY));
++        Joy[1].err = err;
++    }
 +    if (SpfFlagChk(pG, SPF_KEY)) {
 +        Key2.on = 0;
 +        Key2.old = 0;
@@ -154,7 +181,7 @@ index cc978df..9306965 100644
 +        return;
 +    }
 +    for (i = 0, bit = 1; i < 64; bit <<= 1, i++) {
-+        if (Joy[1].on & Key_type_tbl[pSys->pad_type][i]) {
++        if (j2.on & Key_type_tbl[pSys->pad_type][i]) {
 +            on |= bit;
 +        }
 +    }
@@ -171,12 +198,12 @@ index cc978df..9306965 100644
 +    Key2.on = on;
 +    Key2.rep = Key2.trg;
 +    Key2.rep2 = Key2.trg;
-+    Key2.stickX = Joy[1].stickX;
-+    Key2.stickY = Joy[1].stickY;
-+    Key2.substickX = Joy[1].substickX;
-+    Key2.substickY = Joy[1].substickY;
-+    Key2.triggerLeft = Joy[1].triggerLeft;
-+    Key2.triggerRight = Joy[1].triggerRight;
++    Key2.stickX = j2.stickX;
++    Key2.stickY = j2.stickY;
++    Key2.substickX = j2.substickX;
++    Key2.substickY = j2.substickY;
++    Key2.triggerLeft = j2.triggerLeft;
++    Key2.triggerRight = j2.triggerRight;
 +    Key2.analogA = 0;
 +    Key2.analogB = 0;
 +}
