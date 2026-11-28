@@ -26,6 +26,8 @@ final class TouchShowRule {
   static final float MOVED = 0.5f;
 
   private int mode = AUTO;
+  // keep: a second player is on (an online room or player 2's controller): the controls stay, a controller does not hide them
+  private boolean keep;
   // touched: the screen since the controller's last use; used: a controller since the app started
   private boolean touched, used;
 
@@ -36,6 +38,9 @@ final class TouchShowRule {
 
   int mode() { return mode; }
 
+  /** Online or split screen (26.11.2026): the controls are never hidden by a controller (not with SUPPRESS either). */
+  void setKeep(boolean keep) { this.keep = keep; }
+
   /** What counts as a connected controller for shown(): a gamepad; with SUPPRESS also a keyboard or a mouse
    *  (`keyboardOrMouse`) or a PC / Chromebook (`pc`, ChromeOS: its built-in keyboard and touchpad). */
   static boolean counts(int mode, boolean gamepad, boolean keyboardOrMouse, boolean pc) {
@@ -44,7 +49,7 @@ final class TouchShowRule {
 
   /** Shown now, with a controller connected or not. */
   boolean shown(boolean controller) {
-    if (mode == FORCE || !controller) return true;
+    if (mode == FORCE || keep || !controller) return true;
     return touched && (mode == AUTO || !used);
   }
 

@@ -59,6 +59,8 @@ final class TouchControls implements CoreTouch.Host {
   private final int[] where = new int[2];
   private final TouchShowRule rule = new TouchShowRule();
   private boolean shown, editing, quiet, first = true;
+  /** Player 2 has a controller (CoreActivity): the controls are not hidden by a controller. */
+  private boolean keepShown;
   // L's and R's width over height in the ICONS style on this screen (TouchStyle.shoulderAspect); `reshape`: to
   // build the layout again with it once the editor closes
   private float shoulder = TouchStyle.SHOULDER_ASPECT;
@@ -379,6 +381,8 @@ final class TouchControls implements CoreTouch.Host {
    * when a device changes, after a touch or a controller's use).
    */
   void update() {
+    // a second player (an online room, player 2's controller): the controls stay while a controller is used
+    rule.setKeep(keepShown || OnlineMenu.inRoom());
     String pads = controllerDevices();
     // (1.1.1) with "Suppress" a keyboard, a mouse or a Chromebook count too (TouchShowRule.counts)
     String others = rule.mode() == TouchShowRule.SUPPRESS ? keyboardMouseDevices() : "";
@@ -399,6 +403,12 @@ final class TouchControls implements CoreTouch.Host {
             + (rule.touched() && want ? ", the screen was touched" : "") + ": " + now);
     Log.i(CoreActivity.TAG, "touch controls " + (want ? "shown" : "hidden") + " (" + why + ")");
     if (change) host.send();
+  }
+
+  void setKeepShown(boolean keep) {
+    if (keep == keepShown) return;
+    keepShown = keep;
+    update();
   }
 
   /** A controller's button or stick was used: hidden again (unless no controller or Force). */

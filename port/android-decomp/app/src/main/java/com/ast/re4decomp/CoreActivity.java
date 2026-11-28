@@ -502,6 +502,7 @@ public final class CoreActivity extends Activity implements InputManager.InputDe
     showFps(fpsPlace(getSharedPreferences(GRAPHICS_PREFS, MODE_PRIVATE)));
     // the touch controls above everything
     touchControls = new TouchControls(this, input, touchMode(inputPrefs), touchHost);
+    touchControls.setKeepShown(input.player2() != PlayerSlots.NONE);
     touchControls.setLatch(inputPrefs.getBoolean(TOUCH_LATCH, false));
     touchControls.setLatchB(inputPrefs.getBoolean(TOUCH_LATCH_B, false));
     gyroAim = new GyroAim(this, main);
@@ -2945,6 +2946,7 @@ public final class CoreActivity extends Activity implements InputManager.InputDe
   @Override public void onInputDeviceAdded(int id) {
     noteConnected(id);
     input.setPlayer2(SplitScreenMenu.player2Device(this));
+    touchControls.setKeepShown(input.player2() != PlayerSlots.NONE);
     touchControls.update();
     updateMouseCapture();
   }
@@ -2967,7 +2969,10 @@ public final class CoreActivity extends Activity implements InputManager.InputDe
     padLayouts.remove(id);
     controllerLog.forget(id);
     input.remove(id);
-    if (id == input.player2()) input.setPlayer2(PlayerSlots.NONE);
+    if (id == input.player2()) {
+      input.setPlayer2(PlayerSlots.NONE);
+      touchControls.setKeepShown(false);
+    }
     send();
     touchControls.update();
   }
