@@ -1,0 +1,182 @@
+# Port patch, second player test (26.11.2026, the project owner: split screen and online need a second Leon; this is the
+# first experiment of port/docs/split-online-plan.md). While the app sends a controller on channel 1 (re4_pad2_connected,
+# runtime/pad.cpp) the main loop creates a second Leon (EmMgr.create(0), the constructor sets pPL = this, so pPL is put
+# back) beside the first one and moves it after the first player (re4_pl2_move, em.cpp): the game reads the globals pPL
+# and Key, so pPL and Key are swapped to the second player's (Key2, built from Joy[1] in pad.cpp) for that one call and
+# put back. emMove skips the second player (the first one is skipped there too); cEmMgr::destroy / arrayAlloc forget it.
+# Without a controller on channel 1 nothing changes: no second player, no Key2 effect. NOT done yet: the camera (follows
+# the first player only), the enemies' targets (pTarget = pPL), the HUD, the inventory and life (shared: pG), cutscenes.
+diff --git a/src/game/em.cpp b/src/game/em.cpp
+index 60f8bae..61401ae 100644
+--- a/src/game/em.cpp
++++ b/src/game/em.cpp
+@@ -48,6 +48,7 @@ const char* cEmMgr::idName[96] = {
+ };
+ 
+ cPlayer* pPL;
++cPlayer* pPL2; /* PORT (patch 0260): second player test, see the end of this file */
+ cEm* pSUB;
+ void (*EmInitFunc)(cEm* em);
+ void (*PlInitFunc)(cEm* em);
+@@ -211,6 +212,7 @@ int cEmMgr::arrayAlloc(u32 workNum)
+     cManager<cEm>::arrayAlloc(workNum);
+     pPL = 0;
+     pSUB = 0;
++    pPL2 = 0; /* PORT (patch 0260) */
+     return 1;
+ }
+ 
+@@ -236,6 +238,7 @@ void cEmMgr::destroy(cEm* pEm)
+         pLog->err(0, 0, "cEmMgr::destroy() WORK IS ALREADY DEAD. %08X", pEm);
+         return;
+     }
++    if (pEm == (cEm*) pPL2) pPL2 = 0; /* PORT (patch 0260) */
+     pEm->push();
+     cManager<cEm>::destroy(pEm);
+ }
+@@ -360,7 +363,7 @@ void emMove(cEm* pEm)
+     if (StaFlagChk(pG, STA_SUSPEND) && !(pEm->be_flag & 0x800)) {
+         return;
+     }
+-    if (pEm == pPL) {
++    if (pEm == pPL || pEm == (cEm*) pPL2) { /* PORT (patch 0260) */
+         return;
+     }
+     if (pEm == pSUB && (SpfFlagChk(pG, SPF_SUBCHAR))) {
+@@ -458,3 +461,52 @@ void cDmgInfo::move()
+ }
+ 
+ cEmMgr EmMgr;
++
++/* PORT (patch 0260): second player test (split screen / online), the first experiment of port/docs/split-online-plan.md.
++   pPL2 is a second Leon, created while the app sends a controller on channel 1 (re4_pad2_connected). The game reads the
++   globals pPL (the player) and Key (the buttons) everywhere, so the second Leon only runs inside re4_pl2_move with those
++   two swapped to its own (Key2, pad.cpp, from Joy[1]) and put back right after. Not done yet: the camera, the enemies'
++   targets (pTarget = pPL), the HUD, the inventory and life (shared, pG), cutscenes. */
++extern KEY Key2;
++extern "C" int re4_pad2_connected(void);
++
++void re4_pl2_move()
++{
++    if (!re4_pad2_connected()) {
++        if (pPL2) {
++            cPlayer* gone = pPL2;
++            pPL2 = 0;
++            EmMgr.destroy(gone);
++        }
++        return;
++    }
++    if (!pPL2) {
++        if (pPL && pPL->isAlive() && !StaFlagChk(pG, STA_SUSPEND)) {
++            cPlayer* first = pPL;
++            cEm* e = EmMgr.create(0);
++            pPL = first;
++            if (e) {
++                pPL2 = (cPlayer*) e;
++                e->pos = first->pos;
++                e->pos.x += 200.0f;
++                e->ang = first->ang;
++            }
++        }
++        return;
++    }
++    if (!pPL2->isAlive()) {
++        pPL2 = 0;
++        return;
++    }
++    if (!SpfFlagChk(pG, SPF_PL) && (pPL2->be_flag & 0x20) &&
++        (!StaFlagChk(pG, STA_SUSPEND) || (pPL2->be_flag & 0x800))) {
++        cPlayer* first = pPL;
++        KEY firstKey = Key;
++        pPL = pPL2;
++        Key = Key2;
++        pPL2->move();
++        Key2 = Key;
++        Key = firstKey;
++        pPL = first;
++    }
++}
+diff --git a/src/game/game.cpp b/src/game/game.cpp
+index 295e41f..ebeb42b 100644
+--- a/src/game/game.cpp
++++ b/src/game/game.cpp
+@@ -605,7 +605,7 @@ void gameMainLoop()
+     }
+     if (!SpfFlagChk(pG, SPF_PL) && (pPL->be_flag & 0x20) &&
+         (!StaFlagChk(pG, STA_SUSPEND) || (pPL->be_flag & 0x800))) {
+-        pPL->move();
++        pPL->move(); { extern void re4_pl2_move(); re4_pl2_move(); } /* PORT (patch 0260): second player test */
+     }
+     ProcessTickGet(5, "Player");
+     if (StaFlagChk(pG, STA_SLOW)) {
+diff --git a/src/game/pad.cpp b/src/game/pad.cpp
+index cc978df..9306965 100644
+--- a/src/game/pad.cpp
++++ b/src/game/pad.cpp
+@@ -277,7 +277,7 @@ void PadRead()
+         KeyStop(0);
+     }
+     Key.analogA = 0;
+-    Key.analogB = 0;
++    Key.analogB = 0; { extern void re4_key2_build(); re4_key2_build(); } /* PORT (patch 0260) */
+     Pad_test();
+     if (SpfFlagChk(pG, SPF_PL)) {
+         KeyStopFlagClear();
+@@ -467,3 +467,57 @@ void Pad_test()
+ 
+ // The split object's .rodata is 8-aligned and 4 bytes longer (padding after the last string).
+ asm(".section .rodata; .balign 8");
++
++/* PORT (patch 0260): Key2, the second player's buttons, made from Joy[1] the way Key is made from Joy[0] (same key table,
++   the same pairs of opposite directions cancel). Without the repeat timers: rep / rep2 are the new presses. */
++KEY Key2;
++
++void re4_key2_build()
++{
++    static const int pairs[8][2] = { { 0, 1 }, { 2, 3 }, { 24, 25 }, { 27, 26 }, { 35, 34 }, { 32, 33 }, { 14, 15 }, { 37, 36 } };
++    u64 on = 0;
++    u64 bit;
++    int i;
++
++    if (SpfFlagChk(pG, SPF_KEY)) {
++        Key2.on = 0;
++        Key2.old = 0;
++        Key2.trg = 0;
++        Key2.rel = 0;
++        Key2.rep = 0;
++        Key2.rep2 = 0;
++        Key2.stickX = 0;
++        Key2.stickY = 0;
++        Key2.substickX = 0;
++        Key2.substickY = 0;
++        Key2.triggerLeft = 0;
++        Key2.triggerRight = 0;
++        return;
++    }
++    for (i = 0, bit = 1; i < 64; bit <<= 1, i++) {
++        if (Joy[1].on & Key_type_tbl[pSys->pad_type][i]) {
++            on |= bit;
++        }
++    }
++    on &= ~KEY_BIT(34);
++    for (i = 0; i < 8; i++) {
++        if ((on & KEY_BIT(pairs[i][0])) && (on & KEY_BIT(pairs[i][1]))) {
++            on &= ~KEY_BIT(pairs[i][0]);
++            on &= ~KEY_BIT(pairs[i][1]);
++        }
++    }
++    Key2.trg = (Key2.old ^ on) & on;
++    Key2.rel = (Key2.old ^ on) & Key2.old;
++    Key2.old = on;
++    Key2.on = on;
++    Key2.rep = Key2.trg;
++    Key2.rep2 = Key2.trg;
++    Key2.stickX = Joy[1].stickX;
++    Key2.stickY = Joy[1].stickY;
++    Key2.substickX = Joy[1].substickX;
++    Key2.substickY = Joy[1].substickY;
++    Key2.triggerLeft = Joy[1].triggerLeft;
++    Key2.triggerRight = Joy[1].triggerRight;
++    Key2.analogA = 0;
++    Key2.analogB = 0;
++}

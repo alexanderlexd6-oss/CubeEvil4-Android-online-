@@ -387,6 +387,14 @@ void re4_pad_live2(const Re4CorePad* pad)
     }
 }
 
+// 1 while the app sends a controller on channel 1: the second player test (patch 0260, game/em.cpp re4_pl2_move) makes a
+// second Leon then and removes it when the controller goes.
+extern "C" int re4_pad2_connected(void)
+{
+    std::lock_guard<std::mutex> lock(g_live2Lock);
+    return g_hasLive2 ? 1 : 0;
+}
+
 void re4_pad_live(const Re4CorePad* pad)
 {
     std::lock_guard<std::mutex> lock(g_liveLock);

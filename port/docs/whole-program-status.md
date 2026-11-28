@@ -20180,3 +20180,14 @@ Der Platz sollte früh reserviert werden (beim Laden von `libre4_platform`).
   `__rlwimi` in den ersten Operanden, die C-Fassung gibt das Ergebnis nur
   zurück. Ein Aufruf als eigene Anweisung (Ergebnis nicht zugewiesen) wirkt im
   Port nicht. In `src/` gab es genau eine solche Stelle (Patch 0042).
+
+## Zweiter Spieler (Test, 26.11.2026, Branch `split-experiment`)
+
+Patch `0260-second-player-test.patch`: Solange die App einen Controller auf Kanal 1 schickt (Menü „Split screen“,
+`re4_pad2_connected`), legt `re4_pl2_move` (em.cpp, vom Hauptschleifen-Aufruf nach `pPL->move()`) einen zweiten Leon an
+(`EmMgr.create(0)`; der Konstruktor setzt `pPL = this`, darum wird `pPL` zurückgesetzt) und bewegt ihn mit vertauschtem `pPL`
+und `Key` (`Key2` aus `Joy[1]`, `re4_key2_build` in pad.cpp). Ohne Controller auf Kanal 1 ändert sich nichts. Nicht
+gelöst: Kamera, Ziele der Gegner (`pTarget = pPL`), HUD, Inventar/Leben (gemeinsam, `pG`), Zwischensequenzen. Der Patch
+fügt fast keine Zeilen in bestehenden Funktionen ein (neuer Code am Dateiende, Aufrufe in vorhandenen Zeilen), weil
+`byte_views.json` und `lp64_int_casts.json` nur ±40 Zeilen Verschiebung vertragen (`game.cpp` liegt schon bei etwa 40).
+Geprüft: `whole_prepare.py` läuft durch, clang-Syntaxprüfung von em/pad/game ohne Fehler. Nicht geprüft: Linken, Laufen.
